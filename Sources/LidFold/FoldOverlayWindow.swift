@@ -12,12 +12,15 @@ final class FoldOverlayWindow: NSWindow {
         let view = FoldView(frame: NSRect(origin: .zero, size: screen.frame.size))
         self.foldView = view
 
+        // Must be the designated initializer. The `screen:` variant is a
+        // convenience initializer that re-dispatches to this one on `self`,
+        // which traps here because the subclass doesn't inherit it. `contentRect`
+        // is in global coordinates, so `screen.frame` already targets that screen.
         super.init(
             contentRect: screen.frame,
             styleMask: [.borderless],
             backing: .buffered,
-            defer: false,
-            screen: screen
+            defer: false
         )
 
         isOpaque = false
