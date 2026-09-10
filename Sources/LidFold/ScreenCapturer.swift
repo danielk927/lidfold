@@ -24,6 +24,22 @@ final class ScreenCapturer: NSObject, SCStreamOutput {
         }
     }
 
+    /// Asks for Screen Recording access up front.
+    ///
+    /// Capture would otherwise first be attempted while the lid is closing,
+    /// which puts the TCC prompt on a screen the user can no longer see. The
+    /// first call triggers the system prompt; later calls just report status.
+    static func requestPermission() async -> Bool {
+        do {
+            _ = try await SCShareableContent.excludingDesktopWindows(
+                false, onScreenWindowsOnly: true
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
+
     private var stream: SCStream?
     private let queue = DispatchQueue(label: "app.lidfold.capture", qos: .userInteractive)
 
