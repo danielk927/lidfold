@@ -11,9 +11,19 @@ import CoreVideo
 /// running a `CIGaussianBlur` over two full-screen layers every frame.
 final class MetalFoldView: MTKView, MTKViewDelegate {
 
-    /// Hinge angle at full fold. A true 90° would collapse the image to a line
-    /// well before the lid is actually shut.
-    private static let maxTilt: Float = 0.85
+    /// Hinge angle at full fold, ~48°. A true 90° would collapse the image to a
+    /// line well before the lid is actually shut.
+    private static let maxTilt: Float = 0.8411
+
+    /// Maps a 0...1 setting onto `floor...1`.
+    ///
+    /// The style presets and the sliders each multiply down from 1.0, so at the
+    /// defaults they compounded — perspective landed at 0.70, blur at 0.30,
+    /// shadow at 0.27 — and the fold ran at roughly a third of its strength.
+    /// The controls should modulate the effect, not erase it.
+    private static func scaled(_ value: Double, floor: Float) -> Float {
+        floor + (1 - floor) * Float(min(max(value, 0), 1))
+    }
 
     private struct Uniforms {
         var texelSize: SIMD2<Float>
@@ -143,9 +153,9 @@ final class MetalFoldView: MTKView, MTKViewDelegate {
             texelSize: SIMD2(1 / Float(texture.width), 1 / Float(texture.height)),
             aspect: Float(drawableSize.width / max(drawableSize.height, 1)),
             progress: progress,
-            tilt: Self.maxTilt * Float(settings.perspective),
-            blur: Float(settings.blur),
-            darkness: Float(settings.shadow)
+            tilt: Self.maxTilt * Self.scaled(settings.perspective, floor: 0.72),
+            blur: Self.scaled(settings.blur, floor: 0.50),
+            darkness: Self.scaled(settings.shadow, floor: 0.60)
         )
 
         encoder.setRenderPipelineState(pipeline)

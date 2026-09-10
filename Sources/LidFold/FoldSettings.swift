@@ -42,9 +42,12 @@ final class FoldSettings {
     private init() {
         defaults.register(defaults: [
             Key.style: FoldStyle.silk.rawValue,
-            Key.perspective: 0.7,
-            Key.blur: 0.5,
-            Key.shadow: 0.6,
+            // Start near full strength. These multiply through the active
+            // style's weights, so mid-range defaults compounded down into a
+            // fold barely distinguishable from no fold at all.
+            Key.perspective: 1.0,
+            Key.blur: 0.85,
+            Key.shadow: 0.85,
             Key.enabled: true,
         ])
     }

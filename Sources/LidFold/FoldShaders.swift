@@ -9,6 +9,10 @@ let foldShaderSource = """
 #include <metal_stdlib>
 using namespace metal;
 
+constant float3 kVoid = float3(0.004, 0.005, 0.006);
+constant float  kGoldenAngle = 2.3999632;
+constant int    kTaps = 32;
+
 struct FoldUniforms {
     float2 texelSize;   // 1 / texture size, so blur offsets are in texels
     float  aspect;      // view width / height
@@ -37,89 +41,111 @@ vertex FoldVertex foldVertex(uint id [[vertex_id]]) {
     return out;
 }
 
-// Frosted defocus. Taps are spread on a golden-angle spiral, which gives even
-// coverage without the ring artefacts a concentric pattern produces, and each
-// tap reads from the mip chain so cost stays flat as the radius grows.
-static float3 frostedSample(texture2d<float> tex,
-                            sampler samp,
-                            float2 uv,
-                            float radius,
-                            float2 texelSize) {
-    if (radius < 0.5) {
+// Frosted defocus.
+//
+// Taps sit on a golden-angle spiral, which covers the disc evenly without the
+// rings a concentric pattern leaves behind, and each tap reads from the mip
+// chain so widening the radius costs nothing extra.
+static float3 frosted(texture2d<float> tex,
+                      sampler samp,
+                      float2 uv,
+                      float radius,
+                      float2 texelSize,
+                      float2 screenPos) {
+    if (radius < 0.75) {
         return tex.sample(samp, uv, level(0.0)).rgb;
     }
 
-    // Cap the LOD. Left unbounded it climbs into mips whose texels are larger
-    // than several screen pixels and the blur turns blocky rather than soft.
-    float maxLod = clamp(log2(radius * 0.25), 0.0, 2.0);
+    // Cap the LOD. Unbounded it climbs into mips whose texels span several
+    // screen pixels, and the blur turns blocky instead of soft — which is
+    // worse the further the panel has tipped, exactly where it shows most.
+    float maxLod = clamp(log2(radius * 0.20), 0.0, 2.2);
 
-    const int taps = 16;
-    const float goldenAngle = 2.3999632;
+    // Rotate the whole pattern per pixel. A fixed spiral prints faint rings
+    // across flat gradients; jittering scatters them into noise the eye reads
+    // as grain in the glass.
+    float hash = fract(sin(dot(screenPos, float2(12.9898, 78.233))) * 43758.5453);
+    float angle = (hash - 0.5) * 0.7;
+    float ca = cos(angle);
+    float sa = sin(angle);
 
     float3 sum = float3(0.0);
     float total = 0.0;
-    for (int i = 0; i < taps; ++i) {
-        float t = (float(i) + 0.5) / float(taps);
-        float r = sqrt(t);                       // uniform density over the disc
-        float a = float(i) * goldenAngle;
-        float2 offset = float2(cos(a), sin(a)) * r * radius * texelSize;
-        float w = exp(-2.0 * t);
-        // Centre taps stay sharp, outer taps blend into coarser mips.
-        sum += tex.sample(samp, uv + offset, level(maxLod * r)).rgb * w;
+    for (int i = 0; i < kTaps; ++i) {
+        float t = (float(i) + 0.5) / float(kTaps);
+        float r = sqrt(t);                        // even area density
+        float a = float(i) * kGoldenAngle;
+        float2 dir = float2(cos(a), sin(a));
+        dir = float2(dir.x * ca - dir.y * sa, dir.x * sa + dir.y * ca);
+
+        float w = exp(-2.3 * t);
+        // Centre taps stay sharp so detail survives; outer taps fall back to
+        // coarser mips, which is what makes the edge read as depth of field.
+        float lod = mix(0.0, maxLod, smoothstep(0.1, 0.9, r));
+        float2 at = clamp(uv + dir * r * radius * texelSize, 0.0, 1.0);
+        sum += tex.sample(samp, at, level(lod)).rgb * w;
         total += w;
     }
-    return sum / total;
+
+    // Frosted glass scatters a little ambient light; without this the blur
+    // reads as merely out of focus rather than as a surface.
+    return sum / total + 0.012 * smoothstep(0.0, 24.0, radius);
 }
 
 fragment float4 foldFragment(FoldVertex in [[stage_in]],
                              texture2d<float> tex [[texture(0)]],
                              sampler samp [[sampler(0)]],
                              constant FoldUniforms &u [[buffer(0)]]) {
-    const float3 voidColor = float3(0.004, 0.005, 0.006);
-
-    if (u.progress <= 0.0001) {
+    float turn = clamp(u.progress, 0.0, 1.0);
+    if (turn <= 0.0001) {
         return float4(tex.sample(samp, in.uv, level(0.0)).rgb, 1.0);
     }
 
     // Distance from the hinge: 0 along the bottom edge, 1 at the top.
     float fromHinge = clamp(1.0 - in.uv.y, 0.0, 1.0);
 
-    float theta = u.progress * u.tilt;
+    float theta = turn * u.tilt;
     float c = cos(theta);
     float s = sin(theta);
 
-    // Rotate the screen plane about the hinge and divide through by depth.
-    // Eye distance is scaled by the inverse aspect so a wide display gets the
-    // same apparent vanishing point as a square one.
-    float eye = 3.0 * max(1.0 / max(u.aspect, 0.1), 1.0);
-    float depth = fromHinge * s * 0.85;
+    // Rotate the screen plane about the hinge, then divide through by depth.
+    // This runs backwards — it maps a destination pixel to the source texel
+    // that lands there — so a scale above 1 squeezes the image inward, which
+    // is what gives the far edge its taper. Eye distance is in screen heights:
+    // lower is a shorter lens and a harder taper, and much below 2 the near
+    // edge starts to bow.
+    const float eye = 2.0;
+    float depth = fromHinge * s;
     float persp = eye / max(eye - depth, 0.05);
 
     float2 src;
     src.y = 1.0 - fromHinge * c * persp;
     src.x = 0.5 + (in.uv.x - 0.5) * persp;
 
-    // Past the edges of the folded panel there is nothing to sample: that is
-    // the void the screen is turning into.
+    // Past the edges of the folded panel there is nothing left to sample.
     float2 beyond = max(-src, src - 1.0);
     float outside = max(max(beyond.x, beyond.y), 0.0);
-    float inside = 1.0 - smoothstep(0.0, fwidth(in.uv.x) * 2.0 + 0.002, outside);
+    float inside = 1.0 - smoothstep(0.0, fwidth(in.uv.x) * 2.0 + 0.0015, outside);
 
-    // Defocus grows with both the fold and the distance from the hinge, so the
-    // far edge frosts over first.
-    float spread = pow(fromHinge, 1.3);
-    float radius = 48.0 * u.blur * u.progress * mix(0.25, 1.0, spread);
-    float3 color = frostedSample(tex, samp, clamp(src, 0.0, 1.0), radius, u.texelSize);
+    // Defocus grows with the fold and with distance from the hinge, so the far
+    // edge frosts over first while the near edge stays legible.
+    float spread = pow(smoothstep(0.0, 0.9, fromHinge), 1.2);
+    float radius = 60.0 * u.blur * turn * mix(0.18, 1.0, spread);
+    float3 color = frosted(tex, samp, src, radius, u.texelSize, in.position.xy);
 
-    // A soft specular band where a real panel would catch the room light.
-    float sheen = exp(-pow((fromHinge - 0.6) / 0.3, 2.0)) * s;
-    color += float3(0.80, 0.84, 0.88) * sheen * 0.03;
+    // The tipped panel turns away from the light, with a sheen band where it
+    // would catch the room.
+    color *= 1.0 - 0.22 * s * pow(fromHinge, 1.5);
+    float sheen = exp(-pow((fromHinge - 0.62) / 0.32, 2.0)) * s;
+    color += float3(0.82, 0.85, 0.88) * sheen * 0.05;
 
-    // Falloff into the void, then a final blackout as the lid actually shuts.
-    float fade = smoothstep(0.15, 1.0, fromHinge) * u.progress;
-    color *= 1.0 - 0.85 * fade * u.darkness;
-    color *= 1.0 - smoothstep(0.92, 1.0, u.progress);
+    // Falloff into the void, then the final blackout as the lid actually shuts.
+    float fade = clamp((fromHinge - 0.18) / 0.82, 0.0, 1.0);
+    color *= 1.0 - 0.88 * u.darkness * turn * fade;
 
-    return float4(mix(voidColor, color, inside), 1.0);
+    float shut = 1.0 - smoothstep(0.90, 1.0, turn);
+    color *= shut;
+
+    return float4(mix(kVoid, color, inside * shut), 1.0);
 }
 """
