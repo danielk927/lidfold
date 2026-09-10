@@ -116,19 +116,6 @@ Not yet verified on hardware:
   `CGImage` conversion, but the mip chain is regenerated per frame and that
   hasn't been profiled under a real close.
 
-## Prior art
-
-Inspired by [Bendy](https://trybendy.app/), a $4.99 app that does something
-similar. No code, assets, or resources from that app were used or examined. If
-you like the idea, consider buying theirs; they did it first.
-
-The shader-based approach — folding in a fragment shader against a mipmapped
-capture rather than transforming layers — was arrived at after reading
-[macTilt](https://github.com/lqSky7/iphone-duo-macos-animation), which solves
-the same problem that way, and whose interactive preview slider is the reason
-this one has one. The shader here is written from scratch; that project carries
-no licence, so none of its code is reused.
-
 ## License
 
 MIT — see [LICENSE](LICENSE).
