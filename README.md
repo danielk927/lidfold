@@ -3,9 +3,9 @@
 A macOS menu bar app that folds your desktop as you close your MacBook.
 
 It reads the hinge angle from your MacBook's built-in lid angle sensor and, as
-the lid drops past ~75°, splits what's on screen at the horizontal midline and
-pivots the top half backwards about the crease — so the desktop behaves like the
-two halves of a folding screen while the real lid closes over it.
+the lid drops past ~75°, folds what's on screen backwards about a hinge along
+the bottom edge — the desktop tips away from you, frosts over, and falls into
+the dark as the real lid closes over it.
 
 ## Requirements
 
@@ -73,11 +73,18 @@ smoother before driving anything visual — raw values make the overlay shimmer
 while the lid is held still.
 
 **Effect** — a borderless click-through window sits just below the shielding
-window level. ScreenCaptureKit streams the display into two `CALayer` panels;
-the top one has its anchor point on its bottom edge, so rotating it about the X
-axis pivots it around the crease. Perspective is set as `m34` on the *container's*
-`sublayerTransform` rather than per panel — applied per panel, the halves get
-different vanishing points and the crease visibly tears.
+window level, hosting an `MTKView`. ScreenCaptureKit's `CVPixelBuffer`s go
+straight to the GPU through a `CVMetalTextureCache` (no per-frame `CGImage`
+conversion), are blitted into a mipmapped texture, and a fragment shader does
+the rest: for each pixel on screen it works out which part of the capture would
+land there once the plane has rotated about the hinge, then samples the mip
+chain on a golden-angle spiral for the frosted defocus. Doing the fold per
+pixel rather than by transforming layers keeps the blur on the GPU, where
+reading a coarser mip costs the same as reading a fine one.
+
+The shader is compiled from source at startup. SwiftPM doesn't build `.metal`
+files in a plain executable target, and a precompiled `.metallib` would need a
+resource bundle that the `swift build` and `.app` paths resolve differently.
 
 The overlay excludes itself from the capture filter by `CGWindowID`. Without
 that, it captures its own output and the image recurses.
@@ -92,25 +99,35 @@ Working and verified:
 - Sensor discovery and angle decoding, confirmed against live hardware
 - Builds clean; launches and runs as a menu bar app
 - Capture lifecycle, settings persistence, permission preflight
+- Overlay window construction, full progress sweep, and the teardown/reopen
+  cycle, driven from a harness against the real sources
+- The fold itself, rendered across the whole 0→1 range and inspected frame by
+  frame with a synthetic desktop image
 
 Not yet verified on hardware:
 
-- **The fold visual during an actual lid close.** Every piece is wired up, but
-  watching it happen means closing the lid, which is awkward to observe. Expect
-  to tune `maxFoldRadians` and `eyeDistance` in `FoldView.swift` by eye.
+- **The fold during an actual lid close.** Every stage is verified through the
+  preview, but nobody has watched it happen while the lid is genuinely moving.
+  `maxTilt` in `MetalFoldView.swift` and the eye distance in `FoldShaders.swift`
+  are the two knobs most likely to want tuning by eye.
 - **Angle tracking across large travel.** Readings were confirmed live at
-  113–114°, including real sensor noise, but not swept through the full range.
-- **60fps sustained performance.** Full-screen capture plus a per-frame
-  `CGImage` conversion is the likely bottleneck. If it drags, the fix is
-  rendering the `CVPixelBuffer` through a `CAMetalLayer` instead of converting
-  on the CPU each frame.
+  113–119°, including real sensor noise, but not swept through the full range.
+- **60fps sustained performance.** Frames now reach the GPU without a per-frame
+  `CGImage` conversion, but the mip chain is regenerated per frame and that
+  hasn't been profiled under a real close.
 
 ## Prior art
 
 Inspired by [Bendy](https://trybendy.app/), a $4.99 app that does something
-similar. This is an independent implementation written from scratch — no code,
-assets, or resources from that app were used or examined. If you like the idea,
-consider buying theirs; they did it first.
+similar. No code, assets, or resources from that app were used or examined. If
+you like the idea, consider buying theirs; they did it first.
+
+The shader-based approach — folding in a fragment shader against a mipmapped
+capture rather than transforming layers — was arrived at after reading
+[macTilt](https://github.com/lqSky7/iphone-duo-macos-animation), which solves
+the same problem that way, and whose interactive preview slider is the reason
+this one has one. The shader here is written from scratch; that project carries
+no licence, so none of its code is reused.
 
 ## License
 

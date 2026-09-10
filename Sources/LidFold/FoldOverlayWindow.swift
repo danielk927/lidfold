@@ -6,10 +6,10 @@ import AppKit
 /// the user is closing their laptop, not interacting with us.
 final class FoldOverlayWindow: NSWindow {
 
-    let foldView: FoldView
+    let foldView: MetalFoldView
 
     init(screen: NSScreen) {
-        let view = FoldView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        let view = MetalFoldView(frame: NSRect(origin: .zero, size: screen.frame.size))
         self.foldView = view
 
         // Must be the designated initializer. The `screen:` variant is a
