@@ -28,6 +28,18 @@ final class FoldController {
     /// while it winds down.
     private var isFolding = false
 
+    /// The fold angle actually being drawn, easing toward the sensor's. The
+    /// gate that holds progress at zero until the lid is confirmed to be
+    /// closing releases as a step: the moment it opens, progress goes straight
+    /// from nothing to wherever the lid already is, and the screen lurches into
+    /// a fold rather than starting one. Easing turns any such step into a
+    /// ramp, wherever it comes from.
+    private var drawnProgress: Double = 0
+    private var lastTick: CFTimeInterval?
+    /// Time constant. Long enough to swallow a step, short enough that the fold
+    /// still tracks the hinge rather than lagging behind it.
+    private static let followTau: Double = 0.09
+
     /// Reported to the menu bar so it can show why the effect isn't running.
     private(set) var lastError: String?
 
@@ -96,7 +108,13 @@ final class FoldController {
         // across the threshold — at 60Hz, which is the screen visibly popping
         // out and dropping back.
         isFolding = true
-        overlay?.foldView.setProgress(progress)
+
+        let now = CACurrentMediaTime()
+        let dt = min(now - (lastTick ?? now - 1.0 / 60.0), 0.1)
+        lastTick = now
+        drawnProgress += (progress - drawnProgress) * (1 - exp(-dt / Self.followTau))
+        if abs(progress - drawnProgress) < 0.001 { drawnProgress = progress }
+        overlay?.foldView.setProgress(drawnProgress)
 
         if captureState == .idle { beginCapture() }
     }
@@ -147,6 +165,8 @@ final class FoldController {
         // windows they can no longer see, and the menu bar is covered. It has
         // to come down regardless of what the capture state believes.
         isFolding = false
+        drawnProgress = 0
+        lastTick = nil
         overlay?.hide()
         guard captureState == .running || captureState == .starting else {
             captureState = .idle
