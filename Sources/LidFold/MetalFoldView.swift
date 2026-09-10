@@ -11,11 +11,20 @@ import CoreVideo
 /// running a `CIGaussianBlur` over two full-screen layers every frame.
 final class MetalFoldView: MTKView, MTKViewDelegate {
 
-    /// Hinge angle at full fold, ~19°. The fold is carried by the frost and the
-    /// falloff into the void, not by displacement — a large angle drags the
-    /// image bodily down the screen, which reads as the desktop being yanked
-    /// away rather than tipping.
-    static let maxTilt: Float = 0.34
+    /// How far the panel has physically rotated away from vertical, for a given
+    /// fold progress.
+    ///
+    /// Progress is a straight remapping of the lid angle, so it can be run back
+    /// the other way to recover the angle and from there the rotation. The
+    /// image is counter-rotated by exactly this, which is what pins the desktop
+    /// in space instead of turning it with the panel. Nothing here is a free
+    /// parameter — invent the angle and the illusion stops holding.
+    static func panelTilt(forProgress progress: Float) -> Float {
+        let start = LidAngleMonitor.foldStartAngle
+        let end = LidAngleMonitor.foldEndAngle
+        let angle = start - Double(progress) * (start - end)
+        return Float(max(0, 90 - angle) * .pi / 180)
+    }
 
     /// Maps a 0...1 setting onto `floor...1`.
     ///
@@ -32,6 +41,7 @@ final class MetalFoldView: MTKView, MTKViewDelegate {
         var aspect: Float
         var progress: Float
         var tilt: Float
+        var eyeDistance: Float
         var blur: Float
         var darkness: Float
     }
@@ -155,7 +165,10 @@ final class MetalFoldView: MTKView, MTKViewDelegate {
             texelSize: SIMD2(1 / Float(texture.width), 1 / Float(texture.height)),
             aspect: Float(drawableSize.width / max(drawableSize.height, 1)),
             progress: progress,
-            tilt: Self.maxTilt * Self.scaled(settings.perspective, floor: 0.72),
+            tilt: Self.panelTilt(forProgress: progress),
+            // Perspective now sets how close the viewer is rather than how far
+            // the panel turns — the turn is the lid's, not ours to choose.
+            eyeDistance: 3.5 - 1.5 * Self.scaled(settings.perspective, floor: 0.0),
             blur: Self.scaled(settings.blur, floor: 0.50),
             darkness: Self.scaled(settings.shadow, floor: 0.60)
         )

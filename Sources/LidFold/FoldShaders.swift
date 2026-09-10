@@ -10,6 +10,10 @@ let foldShaderSource = """
 using namespace metal;
 
 constant float3 kVoid = float3(0.004, 0.005, 0.006);
+/// Eye height up the upright screen, in panel heights. Level with the middle
+/// of the display rather than with the hinge, which is where a viewer's eye
+/// actually is and what decides where the vanishing point sits.
+constant float  kEyeHeight = 0.5;
 constant float  kGoldenAngle = 2.3999632;
 constant int    kTaps = 32;
 
@@ -17,7 +21,8 @@ struct FoldUniforms {
     float2 texelSize;   // 1 / texture size, so blur offsets are in texels
     float  aspect;      // view width / height
     float  progress;    // 0 = flat, 1 = fully folded
-    float  tilt;        // hinge angle at full fold, radians
+    float  tilt;        // panel rotation away from vertical, radians
+    float  eyeDistance; // viewing distance, in panel heights
     float  blur;
     float  darkness;
 };
@@ -103,26 +108,32 @@ fragment float4 foldFragment(FoldVertex in [[stage_in]],
         return float4(tex.sample(samp, in.uv, level(0.0)).rgb, 1.0);
     }
 
-    // Distance from the hinge: 0 along the bottom edge, 1 at the top.
-    float fromHinge = clamp(1.0 - in.uv.y, 0.0, 1.0);
+    // Distance along the panel from the hinge: 0 at the bottom edge, 1 at the
+    // top.
+    float d = clamp(1.0 - in.uv.y, 0.0, 1.0);
 
-    float theta = turn * u.tilt;
-    float c = cos(theta);
-    float s = sin(theta);
+    // u.tilt is how far the panel has actually rotated away from vertical,
+    // taken from the lid angle rather than invented from progress.
+    float cb = cos(u.tilt);
+    float sb = sin(u.tilt);
 
-    // Rotate the screen plane about the hinge, then divide through by depth.
-    // This runs backwards — it maps a destination pixel to the source texel
-    // that lands there — so a scale above 1 squeezes the image inward, which
-    // is what gives the far edge its taper. Eye distance is in screen heights:
-    // lower is a shorter lens and a harder taper, and much below 2 the near
-    // edge starts to bow.
-    const float eye = 4.0;
-    float depth = fromHinge * s;
-    float persp = eye / max(eye - depth, 0.05);
+    // Where this pixel physically sits once the panel has swung, in panel
+    // heights, hinge at the origin, +z toward the viewer. Closing a laptop
+    // carries the top edge forward and down, which is what sb does here.
+    float py = d * cb;
+    float pz = d * sb;
+
+    // Cast from the eye through that physical point onto an upright screen
+    // standing at z = 0, and sample wherever it lands. The desktop is then
+    // pinned in space: the panel rotates through it, the image does not turn
+    // with the panel, and what you lose off the top is the part of the upright
+    // screen the tipped panel no longer covers.
+    float t = u.eyeDistance / max(u.eyeDistance - pz, 0.05);
+    float height = kEyeHeight + t * (py - kEyeHeight);
 
     float2 src;
-    src.y = 1.0 - fromHinge * c * persp;
-    src.x = 0.5 + (in.uv.x - 0.5) * persp;
+    src.x = 0.5 + t * (in.uv.x - 0.5);
+    src.y = 1.0 - height;
 
     // Signed distance to the panel's edge in source space: negative inside it,
     // positive past it, where there is nothing left to sample.
@@ -152,18 +163,18 @@ fragment float4 foldFragment(FoldVertex in [[stage_in]],
     // is nearly in focus and the far edge carries almost all of it, which is
     // what depth of field on a plane tipping away actually looks like — a flat
     // 30% floor across the bottom read as the whole screen being smeared.
-    float spread = pow(smoothstep(0.0, 1.0, fromHinge), 1.7);
+    float spread = pow(smoothstep(0.0, 1.0, d), 1.7);
     float radius = 225.0 * u.blur * turn * mix(0.06, 1.0, spread);
     float3 color = frosted(tex, samp, src, radius, u.texelSize, in.position.xy);
 
     // The tipped panel turns away from the light, with a sheen band where it
     // would catch the room.
-    color *= 1.0 - 0.22 * s * pow(fromHinge, 1.5);
-    float sheen = exp(-pow((fromHinge - 0.62) / 0.32, 2.0)) * s;
+    color *= 1.0 - 0.22 * turn * pow(d, 1.5);
+    float sheen = exp(-pow((d - 0.62) / 0.32, 2.0)) * turn;
     color += float3(0.82, 0.85, 0.88) * sheen * 0.05;
 
     // Falloff into the void, then the final blackout as the lid actually shuts.
-    float fade = clamp((fromHinge - 0.18) / 0.82, 0.0, 1.0);
+    float fade = clamp((d - 0.18) / 0.82, 0.0, 1.0);
     color *= 1.0 - 0.88 * u.darkness * turn * fade;
 
     float shut = 1.0 - smoothstep(0.90, 1.0, turn);
