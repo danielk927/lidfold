@@ -14,6 +14,11 @@ final class FoldController {
     private enum CaptureState { case idle, starting, running, stopping }
     private var captureState: CaptureState = .idle
 
+    /// Whether the overlay belongs on screen. The single owner of that answer —
+    /// capture state can't be it, because the stream keeps delivering frames
+    /// while it winds down.
+    private var isFolding = false
+
     /// Reported to the menu bar so it can show why the effect isn't running.
     private(set) var lastError: String?
 
@@ -30,7 +35,18 @@ final class FoldController {
             self?.handle(progress: progress)
         }
         capturer.onFrame = { [weak self] buffer in
-            Task { @MainActor in self?.overlay?.foldView.update(with: buffer) }
+            Task { @MainActor in
+                guard let self, let overlay = self.overlay else { return }
+                overlay.foldView.update(with: buffer)
+                // Reveal only once there is a frame to draw — an empty overlay
+                // is a black rectangle over the desktop — and only while the
+                // fold is still meant to be up. Frames keep arriving for a
+                // moment after teardown because the stream stops asynchronously,
+                // and revealing on one of those strands a full-screen opaque
+                // window on the display with nothing left to take it down.
+                guard self.isFolding else { return }
+                overlay.show()
+            }
         }
     }
 
@@ -47,19 +63,13 @@ final class FoldController {
     }
 
     private func apply(progress: Double) {
-        guard FoldSettings.shared.isEnabled else {
-            if captureState != .idle { teardown() }
+        guard FoldSettings.shared.isEnabled, progress > 0 else {
+            teardown()
             return
         }
 
-        if progress <= 0 {
-            if captureState != .idle { teardown() }
-            return
-        }
-
+        isFolding = true
         ensureOverlay()
-        overlay?.show()
-        overlay?.setEffectOpacity(progress)
         overlay?.foldView.setProgress(progress)
 
         if captureState == .idle { beginCapture() }
@@ -87,6 +97,7 @@ final class FoldController {
             } catch {
                 lastError = "\(error)"
                 captureState = .idle
+                isFolding = false
                 overlay?.hide()
             }
         }
@@ -104,8 +115,13 @@ final class FoldController {
     }
 
     private func teardown() {
+        // Unconditional, on every path. The overlay is a full-screen opaque
+        // window sitting just below the shielding level, so leaving it up by
+        // mistake locks the user out of their own display — clicks land on
+        // windows they can no longer see, and the menu bar is covered. It has
+        // to come down regardless of what the capture state believes.
+        isFolding = false
         overlay?.hide()
-        overlay?.setEffectOpacity(0)
         guard captureState == .running || captureState == .starting else {
             captureState = .idle
             return

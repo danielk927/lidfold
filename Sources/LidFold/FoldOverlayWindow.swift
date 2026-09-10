@@ -46,19 +46,19 @@ final class FoldOverlayWindow: NSWindow {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    /// Reveals the overlay. Always fully opaque: it stands in for the screen,
+    /// and at anything less the real desktop shows through underneath and the
+    /// fold reads as a ghost of itself double-exposed over the sharp original.
+    /// Nothing pops, because at low progress the shader draws the capture 1:1.
     func show() {
         guard !isVisible else { return }
+        alphaValue = 1
         orderFrontRegardless()
     }
 
     func hide() {
         guard isVisible else { return }
         orderOut(nil)
-    }
-
-    /// Overall opacity of the effect, driven by fold progress so the overlay
-    /// fades in rather than popping on at the threshold angle.
-    func setEffectOpacity(_ value: Double) {
-        alphaValue = CGFloat(min(max(value, 0), 1))
+        alphaValue = 0
     }
 }

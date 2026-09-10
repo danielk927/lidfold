@@ -15,6 +15,11 @@ final class LidAngleMonitor {
     /// Weight of each new sample. Lower = smoother but laggier.
     private static let smoothingFactor: Double = 0.35
 
+    /// Consecutive failed reads tolerated before the effect is torn down.
+    /// Half a second at the default 60Hz.
+    private static let maxFailedReads = 30
+
+    private var failedReads = 0
     private let sensor: LidAngleSensor
     private let queue = DispatchQueue(label: "app.lidfold.sensor", qos: .userInteractive)
     private var timer: DispatchSourceTimer?
@@ -42,10 +47,22 @@ final class LidAngleMonitor {
         timer?.cancel()
         timer = nil
         smoothedAngle = nil
+        failedReads = 0
     }
 
     private func sample() {
-        guard let raw = sensor.currentAngle() else { return }
+        guard let raw = sensor.currentAngle() else {
+            // The odd dropped read is normal. A run of them means the sensor
+            // is gone, and staying silent would leave the overlay frozen on
+            // screen at the last angle with nothing to bring it down — so
+            // report the lid as open and let the effect tear itself down.
+            failedReads += 1
+            if failedReads == Self.maxFailedReads {
+                DispatchQueue.main.async { [weak self] in self?.onProgressChange?(0) }
+            }
+            return
+        }
+        failedReads = 0
 
         let smoothed: Double
         if let previous = smoothedAngle {
