@@ -72,7 +72,11 @@ final class FoldController {
 
     private func handle(progress: Double, angle: Double, isClosing: Bool) {
         guard previewProgress == nil else { return }
-        apply(progress: progress, armed: isClosing && angle <= Self.preArmAngle)
+        // Progress is gated on the lid actually travelling downward. The fold
+        // now starts at 95 degrees, which people work at, so angle alone would
+        // leave the desktop folded while they sat in front of it.
+        apply(progress: isClosing ? progress : 0,
+              armed: isClosing && angle <= Self.preArmAngle)
     }
 
     private func apply(progress: Double, armed: Bool) {
@@ -83,16 +87,16 @@ final class FoldController {
 
         ensureOverlay()
 
-        // Armed but not yet folding: frames flow into the texture so there is
-        // something to draw the instant the fold starts, but the overlay stays
-        // off screen. Revealing here would swap the live desktop for a capture
-        // of it, and the cursor is excluded from that capture.
-        isFolding = progress > 0
-        if isFolding {
-            overlay?.foldView.setProgress(progress)
-        } else {
-            overlay?.hide()
-        }
+        // Up for the whole close, including the stretch before the fold starts,
+        // where the shader draws the capture 1:1 and the overlay is
+        // indistinguishable from the desktop behind it.
+        //
+        // Toggling on progress crossing zero instead means the window gets
+        // ordered in and out of the window server as the smoothed angle jitters
+        // across the threshold — at 60Hz, which is the screen visibly popping
+        // out and dropping back.
+        isFolding = true
+        overlay?.foldView.setProgress(progress)
 
         if captureState == .idle { beginCapture() }
     }

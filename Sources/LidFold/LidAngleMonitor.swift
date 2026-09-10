@@ -8,7 +8,7 @@ import Foundation
 final class LidAngleMonitor {
 
     /// Effect begins once the lid drops below this angle.
-    static let foldStartAngle: Double = 75
+    static let foldStartAngle: Double = 95
     /// Effect is fully applied at or below this angle.
     static let foldEndAngle: Double = 5
 
@@ -22,11 +22,21 @@ final class LidAngleMonitor {
     /// How long "closing" stays latched after the lid stops moving down, so a
     /// pause partway through doesn't disarm the capture. 0.75s at 60Hz.
     private static let closingHoldTicks = 45
-    /// Downward movement per tick that counts as closing rather than jitter.
-    /// The sensor wanders about a degree at rest even after smoothing.
-    private static let closingThreshold: Double = 0.15
+    /// Closing is measured as sustained descent across a window rather than
+    /// tick to tick. The sensor wanders about a degree at rest even after
+    /// smoothing, and single-tick comparison cannot tell that from movement:
+    /// noise clears any per-tick threshold small enough to catch a slow close,
+    /// which latches the capture on almost continuously while the lid sits
+    /// still. Across a window the wander cancels and real travel accumulates.
+    private static let descentWindowTicks = 15          // 0.25s at 60Hz
+    private static let descentDegrees: Double = 2.0
+    /// A single-tick drop this large is unambiguous. Smoothing damps a 1 degree
+    /// raw jump to about a third of that, so noise cannot reach it, and waiting
+    /// out the window on a fast close would burn most of the run-up to the
+    /// fold: at a one second close that window is 22 degrees of travel.
+    private static let lungeDegrees: Double = 0.8
 
-    private var previousAngle: Double?
+    private var recentAngles: [Double] = []
     private var closingTicks = 0
     private var failedReads = 0
     private let sensor: LidAngleSensor
@@ -58,7 +68,7 @@ final class LidAngleMonitor {
         timer?.cancel()
         timer = nil
         smoothedAngle = nil
-        previousAngle = nil
+        recentAngles.removeAll()
         closingTicks = 0
         failedReads = 0
     }
@@ -88,12 +98,17 @@ final class LidAngleMonitor {
 
         // Latched so a pause mid-close doesn't drop the capture and force it
         // to spin up again.
-        if let previous = previousAngle, smoothed < previous - Self.closingThreshold {
+        recentAngles.append(smoothed)
+        if recentAngles.count > Self.descentWindowTicks + 1 { recentAngles.removeFirst() }
+        let lunging = recentAngles.count >= 2
+            && (recentAngles[recentAngles.count - 2] - smoothed) >= Self.lungeDegrees
+        let descending = lunging || (recentAngles.count > Self.descentWindowTicks
+            && (recentAngles[0] - smoothed) >= Self.descentDegrees)
+        if descending {
             closingTicks = Self.closingHoldTicks
         } else if closingTicks > 0 {
             closingTicks -= 1
         }
-        previousAngle = smoothed
         let isClosing = closingTicks > 0
 
         let progress = Self.progress(forAngle: smoothed)
