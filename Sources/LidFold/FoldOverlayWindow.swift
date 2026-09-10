@@ -46,19 +46,42 @@ final class FoldOverlayWindow: NSWindow {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    /// Reveals the overlay. Always fully opaque: it stands in for the screen,
-    /// and at anything less the real desktop shows through underneath and the
-    /// fold reads as a ghost of itself double-exposed over the sharp original.
-    /// Nothing pops, because at low progress the shader draws the capture 1:1.
+    /// How long the overlay takes to come up.
+    static let revealDuration: TimeInterval = 0.18
+
+    /// Reveals the overlay by dissolving it in over the desktop.
+    ///
+    /// It has to end fully opaque — it stands in for the screen, and holding it
+    /// part-transparent while the fold deepens shows the sharp desktop through
+    /// the folded image as a double exposure. But swapping straight to opaque
+    /// is a hard cut, and a hard cut between two nearly-identical images still
+    /// reads as a jump: whatever slight difference remains — a frame of
+    /// capture latency, a cursor mid-move — arrives all at once.
+    ///
+    /// So it fades, briefly, and only here. The fade finishes while progress is
+    /// still near zero and the shader is drawing the capture 1:1, so there is
+    /// no fold to double-expose. Idempotent, because this is called on every
+    /// captured frame and restarting the fade would stutter it.
     func show() {
         guard !isVisible else { return }
-        alphaValue = 1
+        alphaValue = 0
         orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.revealDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            animator().alphaValue = 1
+        }
     }
 
     func hide() {
         guard isVisible else { return }
-        orderOut(nil)
+        // Cancel any fade still in flight, or it carries on setting alpha back
+        // up on a window that is meant to be coming down.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            animator().alphaValue = 0
+        }
         alphaValue = 0
+        orderOut(nil)
     }
 }
