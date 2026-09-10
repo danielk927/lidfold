@@ -14,7 +14,44 @@ final class FoldController {
     /// you see in place of a transition. Arming on angle alone would leave a
     /// 60fps capture running through ordinary use, since people work at well
     /// under this angle.
-    private static let preArmAngle = LidAngleMonitor.foldStartAngle + 25
+    nonisolated private static let preArmAngle = LidAngleMonitor.foldStartAngle + 25
+    /// Engagement ends once the lid is clearly back open, with hysteresis so it
+    /// doesn't chatter against the arming angle.
+    nonisolated private static let releaseAngle = LidAngleMonitor.foldStartAngle + 30
+    /// How long the lid may sit still above the fold angle while engaged before
+    /// the capture is dropped. Below the fold angle it is held indefinitely.
+    nonisolated private static let idleReleaseTicks = 90                     // 1.5s at 60Hz
+
+    private var engaged = false
+    private var idleTicks = 0
+
+    /// Whether the effect should be running, given where the lid is and whether
+    /// it is moving.
+    ///
+    /// Motion is what gets you in, not what keeps you there. Requiring it
+    /// throughout means a slow close, or pausing halfway, drops the effect and
+    /// snaps the desktop back — the fold follows the hinge angle, and the hinge
+    /// does not stop being half shut because it stopped moving.
+    ///
+    /// Pure, so the rules can be run against scripted lid profiles without
+    /// waiting on hardware.
+    nonisolated static func nextEngagement(engaged: Bool, angle: Double, isClosing: Bool,
+                                          idleTicks: Int) -> (engaged: Bool, idleTicks: Int) {
+        guard engaged else {
+            return (isClosing && angle <= preArmAngle, 0)
+        }
+        if angle >= releaseAngle {
+            return (false, 0)
+        }
+        if angle >= LidAngleMonitor.foldStartAngle {
+            // Armed but not folding yet. This one does need continuing motion,
+            // or nudging the lid slightly would leave a capture running while
+            // someone carried on working at that angle.
+            let ticks = isClosing ? 0 : idleTicks + 1
+            return (ticks <= idleReleaseTicks, ticks)
+        }
+        return (true, 0)
+    }
 
     private let monitor: LidAngleMonitor
     private let capturer = ScreenCapturer()
@@ -84,11 +121,11 @@ final class FoldController {
 
     private func handle(progress: Double, angle: Double, isClosing: Bool) {
         guard previewProgress == nil else { return }
-        // Progress is gated on the lid actually travelling downward. The fold
-        // now starts at 95 degrees, which people work at, so angle alone would
-        // leave the desktop folded while they sat in front of it.
-        apply(progress: isClosing ? progress : 0,
-              armed: isClosing && angle <= Self.preArmAngle)
+        let next = Self.nextEngagement(engaged: engaged, angle: angle,
+                                       isClosing: isClosing, idleTicks: idleTicks)
+        engaged = next.engaged
+        idleTicks = next.idleTicks
+        apply(progress: engaged ? progress : 0, armed: engaged)
     }
 
     private func apply(progress: Double, armed: Bool) {
@@ -165,6 +202,8 @@ final class FoldController {
         // windows they can no longer see, and the menu bar is covered. It has
         // to come down regardless of what the capture state believes.
         isFolding = false
+        engaged = false
+        idleTicks = 0
         drawnProgress = 0
         lastTick = nil
         overlay?.hide()

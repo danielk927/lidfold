@@ -28,8 +28,8 @@ final class LidAngleMonitor {
     /// noise clears any per-tick threshold small enough to catch a slow close,
     /// which latches the capture on almost continuously while the lid sits
     /// still. Across a window the wander cancels and real travel accumulates.
-    private static let descentWindowTicks = 15          // 0.25s at 60Hz
-    private static let descentDegrees: Double = 2.0
+    private static let descentWindowTicks = 30          // 0.5s at 60Hz
+    private static let descentDegrees: Double = 1.0
     /// A single-tick drop this large is unambiguous. Smoothing damps a 1 degree
     /// raw jump to about a third of that, so noise cannot reach it, and waiting
     /// out the window on a fast close would burn most of the run-up to the
