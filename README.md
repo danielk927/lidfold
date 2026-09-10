@@ -96,13 +96,6 @@ Not yet verified on hardware:
   rendering the `CVPixelBuffer` through a `CAMetalLayer` instead of converting
   on the CPU each frame.
 
-## Prior art
-
-Inspired by [Bendy](https://trybendy.app/), a $4.99 app that does something
-similar. This is an independent implementation written from scratch — no code,
-assets, or resources from that app were used or examined. If you like the idea,
-consider buying theirs; they did it first.
-
 ## License
 
 MIT — see [LICENSE](LICENSE).
