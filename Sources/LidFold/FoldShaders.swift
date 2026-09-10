@@ -56,10 +56,11 @@ static float3 frosted(texture2d<float> tex,
         return tex.sample(samp, uv, level(0.0)).rgb;
     }
 
-    // Cap the LOD. Unbounded it climbs into mips whose texels span several
-    // screen pixels, and the blur turns blocky instead of soft — which is
-    // worse the further the panel has tipped, exactly where it shows most.
-    float maxLod = clamp(log2(radius * 0.20), 0.0, 2.2);
+    // Cap the LOD. Unbounded it runs off the end of the mip chain into a
+    // handful of texels stretched over the screen. The cap is deliberately
+    // generous: reading a coarse mip is where the heavy frost comes from, and
+    // it costs the same as reading a fine one.
+    float maxLod = clamp(log2(radius * 0.20), 0.0, 5.0);
 
     // Rotate the whole pattern per pixel. A fixed spiral prints faint rings
     // across flat gradients; jittering scatters them into noise the eye reads
@@ -79,9 +80,10 @@ static float3 frosted(texture2d<float> tex,
         dir = float2(dir.x * ca - dir.y * sa, dir.x * sa + dir.y * ca);
 
         float w = exp(-2.3 * t);
-        // Centre taps stay sharp so detail survives; outer taps fall back to
-        // coarser mips, which is what makes the edge read as depth of field.
-        float lod = mix(0.0, maxLod, smoothstep(0.1, 0.9, r));
+        // Even the centre taps sit well up the mip chain, so the whole disc is
+        // soft rather than a sharp core ringed by blur; outer taps go coarser
+        // still, which is what reads as depth of field across the panel.
+        float lod = mix(maxLod * 0.45, maxLod, smoothstep(0.0, 0.9, r));
         float2 at = clamp(uv + dir * r * radius * texelSize, 0.0, 1.0);
         sum += tex.sample(samp, at, level(lod)).rgb * w;
         total += w;
@@ -130,7 +132,7 @@ fragment float4 foldFragment(FoldVertex in [[stage_in]],
     // Defocus grows with the fold and with distance from the hinge, so the far
     // edge frosts over first while the near edge stays legible.
     float spread = pow(smoothstep(0.0, 0.9, fromHinge), 1.2);
-    float radius = 60.0 * u.blur * turn * mix(0.18, 1.0, spread);
+    float radius = 170.0 * u.blur * turn * mix(0.25, 1.0, spread);
     float3 color = frosted(tex, samp, src, radius, u.texelSize, in.position.xy);
 
     // The tipped panel turns away from the light, with a sheen band where it
