@@ -7,6 +7,15 @@ import ScreenCaptureKit
 @MainActor
 final class FoldController {
 
+    /// The capture is brought up at this angle — but only while the lid is
+    /// actually on its way down. Starting it at the fold threshold instead
+    /// means SCStream is still spinning up as the lid keeps travelling, and the
+    /// first frame lands with the fold already part way in, which is the snap
+    /// you see in place of a transition. Arming on angle alone would leave a
+    /// 60fps capture running through ordinary use, since people work at well
+    /// under this angle.
+    private static let preArmAngle = LidAngleMonitor.foldStartAngle + 25
+
     private let monitor: LidAngleMonitor
     private let capturer = ScreenCapturer()
     private var overlay: FoldOverlayWindow?
@@ -26,13 +35,17 @@ final class FoldController {
     /// effect is otherwise only observable while the lid is shut, which is
     /// exactly when nobody can look at it.
     var previewProgress: Double? {
-        didSet { apply(progress: previewProgress ?? 0) }
+        didSet {
+            // Angle 0 keeps the capture armed for as long as the preview is on.
+            if let previewProgress { apply(progress: previewProgress, armed: true) }
+            else { teardown() }
+        }
     }
 
     init(sensor: LidAngleSensor) {
         monitor = LidAngleMonitor(sensor: sensor)
-        monitor.onProgressChange = { [weak self] progress in
-            self?.handle(progress: progress)
+        monitor.onSample = { [weak self] progress, angle, isClosing in
+            self?.handle(progress: progress, angle: angle, isClosing: isClosing)
         }
         capturer.onFrame = { [weak self] buffer in
             Task { @MainActor in
@@ -57,20 +70,29 @@ final class FoldController {
         teardown()
     }
 
-    private func handle(progress: Double) {
+    private func handle(progress: Double, angle: Double, isClosing: Bool) {
         guard previewProgress == nil else { return }
-        apply(progress: progress)
+        apply(progress: progress, armed: isClosing && angle <= Self.preArmAngle)
     }
 
-    private func apply(progress: Double) {
-        guard FoldSettings.shared.isEnabled, progress > 0 else {
+    private func apply(progress: Double, armed: Bool) {
+        guard FoldSettings.shared.isEnabled, armed || progress > 0 else {
             teardown()
             return
         }
 
-        isFolding = true
         ensureOverlay()
-        overlay?.foldView.setProgress(progress)
+
+        // Armed but not yet folding: frames flow into the texture so there is
+        // something to draw the instant the fold starts, but the overlay stays
+        // off screen. Revealing here would swap the live desktop for a capture
+        // of it, and the cursor is excluded from that capture.
+        isFolding = progress > 0
+        if isFolding {
+            overlay?.foldView.setProgress(progress)
+        } else {
+            overlay?.hide()
+        }
 
         if captureState == .idle { beginCapture() }
     }

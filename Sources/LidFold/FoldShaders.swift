@@ -124,15 +124,34 @@ fragment float4 foldFragment(FoldVertex in [[stage_in]],
     src.y = 1.0 - fromHinge * c * persp;
     src.x = 0.5 + (in.uv.x - 0.5) * persp;
 
-    // Past the edges of the folded panel there is nothing left to sample.
+    // Signed distance to the panel's edge in source space: negative inside it,
+    // positive past it, where there is nothing left to sample.
     float2 beyond = max(-src, src - 1.0);
-    float outside = max(max(beyond.x, beyond.y), 0.0);
-    float inside = 1.0 - smoothstep(0.0, fwidth(in.uv.x) * 2.0 + 0.0015, outside);
+    float edgeDist = max(beyond.x, beyond.y);
+
+    // Dissolve the silhouette over a real distance instead of anti-aliasing a
+    // hard cut. A two-pixel edge reads as a decal pasted onto the desktop,
+    // which is jarring against how soft everything inside it is. The fade
+    // starts well inside the panel and finishes just past it, and widens as
+    // the fold deepens so the panel loses its outline as it falls away.
+    // The width has to start at nothing. With a floor it doesn't matter how
+    // small the fold is: the fade is already almost complete at the boundary,
+    // so a black vignette snaps onto every edge of the screen the instant the
+    // overlay appears. Scaled by turn, the edge begins as a plain antialiased
+    // border indistinguishable from the desktop and opens up from there.
+    float aa = fwidth(in.uv.x) * 1.5 + 0.0008;
+    // Width and inward bite ramp separately. Scaling the width alone still
+    // rushes: the fade's midpoint sits inside the panel, so it eats most of the
+    // border within the first few percent of travel. Squaring the inward reach
+    // holds the edge crisp through the start of the close and softens it late.
+    float feather = 0.13 * turn;
+    float inside = 1.0 - smoothstep(-feather * turn, feather * 0.3 + aa, edgeDist);
+    inside = inside * inside * (3.0 - 2.0 * inside);   // gentler shoulder
 
     // Defocus grows with the fold and with distance from the hinge, so the far
     // edge frosts over first while the near edge stays legible.
     float spread = pow(smoothstep(0.0, 0.9, fromHinge), 1.2);
-    float radius = 170.0 * u.blur * turn * mix(0.25, 1.0, spread);
+    float radius = 260.0 * u.blur * turn * mix(0.30, 1.0, spread);
     float3 color = frosted(tex, samp, src, radius, u.texelSize, in.position.xy);
 
     // The tipped panel turns away from the light, with a sheen band where it

@@ -69,7 +69,11 @@ final class ScreenCapturer: NSObject, SCStreamOutput {
         config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(frameRate))
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.queueDepth = 3
-        config.showsCursor = false
+        // Keep the cursor. The overlay replaces the screen wholesale, so
+        // excluding it means the pointer blinks out of existence at the exact
+        // moment the fold appears — which is the most conspicuous part of the
+        // transition when the effect is driven by hand from the preview.
+        config.showsCursor = true
 
         let stream = SCStream(filter: filter, configuration: config, delegate: nil)
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)

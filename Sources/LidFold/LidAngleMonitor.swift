@@ -19,14 +19,25 @@ final class LidAngleMonitor {
     /// Half a second at the default 60Hz.
     private static let maxFailedReads = 30
 
+    /// How long "closing" stays latched after the lid stops moving down, so a
+    /// pause partway through doesn't disarm the capture. 0.75s at 60Hz.
+    private static let closingHoldTicks = 45
+    /// Downward movement per tick that counts as closing rather than jitter.
+    /// The sensor wanders about a degree at rest even after smoothing.
+    private static let closingThreshold: Double = 0.15
+
+    private var previousAngle: Double?
+    private var closingTicks = 0
     private var failedReads = 0
     private let sensor: LidAngleSensor
     private let queue = DispatchQueue(label: "app.lidfold.sensor", qos: .userInteractive)
     private var timer: DispatchSourceTimer?
     private var smoothedAngle: Double?
 
-    /// Called on the main queue with progress in 0...1 whenever it changes.
-    var onProgressChange: ((Double) -> Void)?
+    /// Called on the main queue with fold progress in 0...1 and the smoothed
+    /// hinge angle. The angle comes along because the capture needs to be up
+    /// before the fold starts, which is a decision about angle, not progress.
+    var onSample: ((_ progress: Double, _ angle: Double, _ isClosing: Bool) -> Void)?
 
     init(sensor: LidAngleSensor) {
         self.sensor = sensor
@@ -47,6 +58,8 @@ final class LidAngleMonitor {
         timer?.cancel()
         timer = nil
         smoothedAngle = nil
+        previousAngle = nil
+        closingTicks = 0
         failedReads = 0
     }
 
@@ -58,7 +71,8 @@ final class LidAngleMonitor {
             // report the lid as open and let the effect tear itself down.
             failedReads += 1
             if failedReads == Self.maxFailedReads {
-                DispatchQueue.main.async { [weak self] in self?.onProgressChange?(0) }
+                // Report the lid as wide open so everything tears down.
+                DispatchQueue.main.async { [weak self] in self?.onSample?(0, 180, false) }
             }
             return
         }
@@ -72,9 +86,19 @@ final class LidAngleMonitor {
         }
         smoothedAngle = smoothed
 
+        // Latched so a pause mid-close doesn't drop the capture and force it
+        // to spin up again.
+        if let previous = previousAngle, smoothed < previous - Self.closingThreshold {
+            closingTicks = Self.closingHoldTicks
+        } else if closingTicks > 0 {
+            closingTicks -= 1
+        }
+        previousAngle = smoothed
+        let isClosing = closingTicks > 0
+
         let progress = Self.progress(forAngle: smoothed)
         DispatchQueue.main.async { [weak self] in
-            self?.onProgressChange?(progress)
+            self?.onSample?(progress, smoothed, isClosing)
         }
     }
 
