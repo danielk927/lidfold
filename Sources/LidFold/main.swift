@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 // `lidfold --angle [count]` prints the live hinge angle. Useful for confirming
 // the sensor works on a given machine before worrying about the overlay.
@@ -23,4 +24,10 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--angle") {
         FileHandle.standardError.write("\(error)\n".data(using: .utf8)!)
         exit(1)
     }
+}
+
+// Top-level code is nonisolated, but it runs on the main thread, so hopping
+// onto the main actor here is safe and lets the launch path stay @MainActor.
+MainActor.assumeIsolated {
+    runLidFoldApp()
 }
