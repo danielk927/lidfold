@@ -17,6 +17,13 @@ final class FoldController {
     /// Reported to the menu bar so it can show why the effect isn't running.
     private(set) var lastError: String?
 
+    /// When non-nil, drives the fold directly and the sensor is ignored. The
+    /// effect is otherwise only observable while the lid is shut, which is
+    /// exactly when nobody can look at it.
+    var previewProgress: Double? {
+        didSet { apply(progress: previewProgress ?? 0) }
+    }
+
     init(sensor: LidAngleSensor) {
         monitor = LidAngleMonitor(sensor: sensor)
         monitor.onProgressChange = { [weak self] progress in
@@ -35,6 +42,11 @@ final class FoldController {
     }
 
     private func handle(progress: Double) {
+        guard previewProgress == nil else { return }
+        apply(progress: progress)
+    }
+
+    private func apply(progress: Double) {
         guard FoldSettings.shared.isEnabled else {
             if captureState != .idle { teardown() }
             return

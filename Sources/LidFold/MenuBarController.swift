@@ -6,7 +6,7 @@ final class MenuBarController {
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let controller: FoldController
-    private lazy var preferences = PreferencesWindow()
+    private lazy var preferences = PreferencesWindow(controller: controller)
 
     init(controller: FoldController) {
         self.controller = controller

@@ -48,7 +48,13 @@ Menu bar icon → Settings. Three styles weight the effects differently:
 | Shade | 0.70        | 0.20 | 1.00   |
 | Frost | 0.35        | 1.00 | 0.30   |
 
-The three sliders scale on top of whichever style is active.
+The three sliders scale on top of whichever style is active. Perspective sets
+the hinge angle at full fold, Blur the frosted defocus, Shadow the falloff into
+the dark.
+
+**Preview without closing the lid** drives the fold by hand from the slider
+underneath it, ignoring the sensor. The effect is otherwise only visible with
+the lid shut, which is exactly when nobody can look at it.
 
 ## How it works
 
