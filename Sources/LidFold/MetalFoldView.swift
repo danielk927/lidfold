@@ -11,9 +11,11 @@ import CoreVideo
 /// running a `CIGaussianBlur` over two full-screen layers every frame.
 final class MetalFoldView: MTKView, MTKViewDelegate {
 
-    /// Hinge angle at full fold, ~48°. A true 90° would collapse the image to a
-    /// line well before the lid is actually shut.
-    private static let maxTilt: Float = 0.8411
+    /// Hinge angle at full fold, ~19°. The fold is carried by the frost and the
+    /// falloff into the void, not by displacement — a large angle drags the
+    /// image bodily down the screen, which reads as the desktop being yanked
+    /// away rather than tipping.
+    static let maxTilt: Float = 0.34
 
     /// Maps a 0...1 setting onto `floor...1`.
     ///

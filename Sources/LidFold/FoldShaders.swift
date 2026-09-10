@@ -60,7 +60,7 @@ static float3 frosted(texture2d<float> tex,
     // handful of texels stretched over the screen. The cap is deliberately
     // generous: reading a coarse mip is where the heavy frost comes from, and
     // it costs the same as reading a fine one.
-    float maxLod = clamp(log2(radius * 0.20), 0.0, 5.0);
+    float maxLod = clamp(log2(radius * 0.20), 0.0, 6.0);
 
     // Rotate the whole pattern per pixel. A fixed spiral prints faint rings
     // across flat gradients; jittering scatters them into noise the eye reads
@@ -116,7 +116,7 @@ fragment float4 foldFragment(FoldVertex in [[stage_in]],
     // is what gives the far edge its taper. Eye distance is in screen heights:
     // lower is a shorter lens and a harder taper, and much below 2 the near
     // edge starts to bow.
-    const float eye = 2.0;
+    const float eye = 4.0;
     float depth = fromHinge * s;
     float persp = eye / max(eye - depth, 0.05);
 
