@@ -33,9 +33,14 @@ final class MetalFoldView: MTKView, MTKViewDelegate {
     private static let blurStrength: Float = 0.755
     private static let darkness: Float = 0.753
 
-    /// Viewing distance in panel heights. Far enough back that the projection
-    /// is nearly orthographic, which is most of what keeps the keystone mild.
-    static let eyeDistance: Float = 5.5
+    /// Viewing distance in panel heights.
+    ///
+    /// This is what sets how hard the far edge converges. Further back is
+    /// closer to orthographic and the panel barely tapers, which reads as the
+    /// image lying flat against the hardware; nearer in, the top pulls in and
+    /// the desktop starts to look like a surface the panel is passing in front
+    /// of rather than one painted on it.
+    static let eyeDistance: Float = 4.0
 
     static func panelTilt(forProgress progress: Float) -> Float {
         let start = LidAngleMonitor.foldStartAngle

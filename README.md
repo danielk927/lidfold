@@ -110,7 +110,7 @@ Working and verified:
 Not yet verified on hardware:
 
 - **How closely the illusion holds.** The geometry assumes where your eye is —
-  mid-screen height, 5.5 panel heights back — and that the panel stands vertical
+  mid-screen height, 4 panel heights back — and that the panel stands vertical
   at a lid angle of 90°. `counterRotation` and `eyeDistance` in
   `MetalFoldView.swift` are the constants to adjust if it drifts.
 - **Angle tracking across large travel.** Readings were confirmed live at
