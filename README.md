@@ -25,9 +25,12 @@ open LidFold.app
 Grant Screen Recording access when prompted — the effect works by capturing the
 screen, so it does nothing without it.
 
-Note that `build-app.sh` signs the bundle ad-hoc. macOS ties Screen Recording
-consent to the code signature, so **every rebuild will re-prompt** for access.
-That's expected, not a bug.
+macOS ties Screen Recording consent to the code signature. `build-app.sh` signs
+with the first Developer ID or Apple Development identity it finds, which is
+stable across rebuilds, so the grant is only needed once. Override it with
+`CODESIGN_IDENTITY`. With no identity installed the script falls back to an
+ad-hoc signature, which is keyed to the binary's own hash — every rebuild then
+looks like a new app and macOS re-prompts.
 
 ## Check your Mac has the sensor
 
