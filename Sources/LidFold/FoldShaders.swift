@@ -155,8 +155,8 @@ fragment float4 foldFragment(FoldVertex in [[stage_in]],
     // rushes: the fade's midpoint sits inside the panel, so it eats most of the
     // border within the first few percent of travel. Squaring the inward reach
     // holds the edge crisp through the start of the close and softens it late.
-    float feather = 0.24 * turn;
-    float inside = 1.0 - smoothstep(-feather * turn, feather * 0.6 + aa, edgeDist);
+    float feather = 0.16 * turn;
+    float inside = 1.0 - smoothstep(-feather * turn, feather * 0.38 + aa, edgeDist);
     inside = inside * inside * (3.0 - 2.0 * inside);   // gentler shoulder
 
     // Defocus is a gradient up the screen, not a uniform frost. The hinge end
