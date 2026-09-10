@@ -72,6 +72,17 @@ final class FoldController {
     /// a fold rather than starting one. Easing turns any such step into a
     /// ramp, wherever it comes from.
     private var drawnProgress: Double = 0
+
+    /// Frames seen since the capture came up. The first frames out of SCStream
+    /// can be blank or only partly composited, and revealing on one puts that
+    /// on screen in place of the desktop.
+    private var framesSeen = 0
+    /// Latched once the lid passes the fold angle, so the overlay appears at
+    /// the threshold rather than during the run-up to it.
+    private var pastThreshold = false
+    /// One way. Once up it stays up until teardown — tying visibility to
+    /// progress makes it flicker as the angle jitters across the threshold.
+    private var revealed = false
     private var lastTick: CFTimeInterval?
     /// Time constant. Long enough to swallow a step, short enough that the fold
     /// still tracks the hinge rather than lagging behind it.
@@ -106,8 +117,18 @@ final class FoldController {
                 // moment after teardown because the stream stops asynchronously,
                 // and revealing on one of those strands a full-screen opaque
                 // window on the display with nothing left to take it down.
+                self.framesSeen += 1
                 guard self.isFolding else { return }
-                overlay.show()
+
+                // Nothing appears until the lid is actually past the fold
+                // angle, and not until the stream has settled. Revealing during
+                // the run-up means the desktop is swapped for a capture of it
+                // while nothing is folding yet, and revealing on frame one
+                // means swapping it for whatever SCStream hands over first.
+                if !self.revealed && self.pastThreshold && self.framesSeen >= 3 {
+                    self.revealed = true
+                }
+                if self.revealed { overlay.show() }
             }
         }
     }
@@ -145,6 +166,7 @@ final class FoldController {
         // across the threshold — at 60Hz, which is the screen visibly popping
         // out and dropping back.
         isFolding = true
+        if progress > 0 { pastThreshold = true }
 
         let now = CACurrentMediaTime()
         let dt = min(now - (lastTick ?? now - 1.0 / 60.0), 0.1)
@@ -202,6 +224,9 @@ final class FoldController {
         // windows they can no longer see, and the menu bar is covered. It has
         // to come down regardless of what the capture state believes.
         isFolding = false
+        framesSeen = 0
+        pastThreshold = false
+        revealed = false
         engaged = false
         idleTicks = 0
         drawnProgress = 0

@@ -148,10 +148,12 @@ fragment float4 foldFragment(FoldVertex in [[stage_in]],
     float inside = 1.0 - smoothstep(-feather * turn, feather * 0.3 + aa, edgeDist);
     inside = inside * inside * (3.0 - 2.0 * inside);   // gentler shoulder
 
-    // Defocus grows with the fold and with distance from the hinge, so the far
-    // edge frosts over first while the near edge stays legible.
-    float spread = pow(smoothstep(0.0, 0.9, fromHinge), 1.2);
-    float radius = 260.0 * u.blur * turn * mix(0.30, 1.0, spread);
+    // Defocus is a gradient up the screen, not a uniform frost. The hinge end
+    // is nearly in focus and the far edge carries almost all of it, which is
+    // what depth of field on a plane tipping away actually looks like — a flat
+    // 30% floor across the bottom read as the whole screen being smeared.
+    float spread = pow(smoothstep(0.0, 1.0, fromHinge), 1.7);
+    float radius = 225.0 * u.blur * turn * mix(0.06, 1.0, spread);
     float3 color = frosted(tex, samp, src, radius, u.texelSize, in.position.xy);
 
     // The tipped panel turns away from the light, with a sheen band where it
