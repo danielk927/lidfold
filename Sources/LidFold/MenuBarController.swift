@@ -1,12 +1,12 @@
 import AppKit
 
-/// Status-bar item: toggle the effect, open settings, quit.
+/// Status-bar item: toggle the effect, quit. There is nothing to configure —
+/// the look is fixed, so the menu is an off switch and a way out.
 @MainActor
 final class MenuBarController {
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let controller: FoldController
-    private lazy var preferences = PreferencesWindow(controller: controller)
 
     init(controller: FoldController) {
         self.controller = controller
@@ -42,14 +42,6 @@ final class MenuBarController {
 
         menu.addItem(.separator())
 
-        let settings = NSMenuItem(
-            title: "Settings…", action: #selector(openSettings), keyEquivalent: ","
-        )
-        settings.target = self
-        menu.addItem(settings)
-
-        menu.addItem(.separator())
-
         let quit = NSMenuItem(title: "Quit LidFold", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -58,12 +50,7 @@ final class MenuBarController {
     }
 
     @objc private func toggleEnabled() {
-        FoldSettings.shared.isEnabled.toggle()
-    }
-
-    @objc private func openSettings() {
-        NSApp.activate(ignoringOtherApps: true)
-        preferences.makeKeyAndOrderFront(nil)
+        controller.isEnabled.toggle()
     }
 
     @objc private func quit() {
@@ -73,7 +60,7 @@ final class MenuBarController {
 }
 
 /// Updates checkmarks and the error line each time the menu opens, so the menu
-/// reflects current state without needing to observe every setting.
+/// reflects current state without needing to observe the controller.
 @MainActor
 final class MenuRefresher: NSObject, NSMenuDelegate {
     static let shared = MenuRefresher()
@@ -86,7 +73,7 @@ final class MenuRefresher: NSObject, NSMenuDelegate {
         for item in menu.items {
             switch item.identifier {
             case Self.toggleIdentifier:
-                item.state = FoldSettings.shared.isEnabled ? .on : .off
+                item.state = controller?.isEnabled ?? true ? .on : .off
             case Self.statusIdentifier:
                 if let error = controller?.lastError {
                     item.title = error

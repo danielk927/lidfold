@@ -91,15 +91,10 @@ final class FoldController {
     /// Reported to the menu bar so it can show why the effect isn't running.
     private(set) var lastError: String?
 
-    /// When non-nil, drives the fold directly and the sensor is ignored. The
-    /// effect is otherwise only observable while the lid is shut, which is
-    /// exactly when nobody can look at it.
-    var previewProgress: Double? {
-        didSet {
-            // Angle 0 keeps the capture armed for as long as the preview is on.
-            if let previewProgress { apply(progress: previewProgress, armed: true) }
-            else { teardown() }
-        }
+    /// The one control there is: whether the effect runs at all. Not a look
+    /// setting — an off switch for something that covers the whole display.
+    var isEnabled = true {
+        didSet { if !isEnabled { teardown() } }
     }
 
     init(sensor: LidAngleSensor) {
@@ -141,7 +136,6 @@ final class FoldController {
     }
 
     private func handle(progress: Double, angle: Double, isClosing: Bool) {
-        guard previewProgress == nil else { return }
         let next = Self.nextEngagement(engaged: engaged, angle: angle,
                                        isClosing: isClosing, idleTicks: idleTicks)
         engaged = next.engaged
@@ -150,7 +144,7 @@ final class FoldController {
     }
 
     private func apply(progress: Double, armed: Bool) {
-        guard FoldSettings.shared.isEnabled, armed || progress > 0 else {
+        guard isEnabled, armed || progress > 0 else {
             teardown()
             return
         }

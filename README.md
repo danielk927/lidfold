@@ -15,15 +15,23 @@ sweeps through it, frosting over and falling into the dark as the lid shuts.
 
 Built and tested on a MacBook Pro (Mac17,2, M5) running macOS 26.5.
 
-## Build
+## Install
 
 ```bash
-./Scripts/build-app.sh
-open LidFold.app
+git clone https://github.com/danielk927/lidfold.git
+cd lidfold
+./Scripts/install.sh
 ```
 
-Grant Screen Recording access when prompted — the effect works by capturing the
-screen, so it does nothing without it.
+That builds it, puts it in `/Applications`, and launches it. Look for the
+laptop icon in your menu bar, then close your lid.
+
+macOS will ask for Screen Recording access the first time — the effect works by
+capturing the screen, so it does nothing without it. Grant it, then quit LidFold
+from the menu bar icon and open it again from `/Applications`: the permission
+only takes effect on the next launch.
+
+To build without installing, run `./Scripts/build-app.sh` and `open LidFold.app`.
 
 macOS ties Screen Recording consent to the code signature. `build-app.sh` signs
 with the first Developer ID or Apple Development identity it finds, which is
@@ -41,25 +49,12 @@ swift build && ./.build/debug/LidFold --angle 10
 Prints ten live angle readings. If it reports that no sensor was found, this app
 can't work on your machine.
 
-## Settings
+## Using it
 
-Menu bar icon → Settings. Three styles weight the effects differently:
+Close your lid. That's the whole interface.
 
-| Style | Perspective | Blur | Shadow |
-| ----- | ----------- | ---- | ------ |
-| Silk  | 1.00        | 0.60 | 0.45   |
-| Shade | 0.70        | 0.20 | 1.00   |
-| Frost | 0.35        | 1.00 | 0.30   |
-
-The three sliders scale on top of whichever style is active. Perspective sets
-how much of the panel's rotation the image counter-rotates against — at 1 the
-desktop would be pinned perfectly upright, which is geometrically true and far
-too strong to look at — Blur the frosted defocus, Shadow the falloff into the
-dark.
-
-**Preview without closing the lid** drives the fold by hand from the slider
-underneath it, ignoring the sensor. The effect is otherwise only visible with
-the lid shut, which is exactly when nobody can look at it.
+The menu bar icon holds two things: a switch to stop the effect without quitting,
+and Quit. There is nothing to configure — the look is fixed, deliberately.
 
 ## How it works
 
@@ -105,18 +100,19 @@ Working and verified:
 - Sensor discovery and angle decoding, confirmed against live hardware
 - Builds clean; launches and runs as a menu bar app
 - Capture lifecycle, settings persistence, permission preflight
-- Overlay window construction, full progress sweep, and the teardown/reopen
-  cycle, driven from a harness against the real sources
-- The fold itself, rendered across the whole 0→1 range and inspected frame by
-  frame with a synthetic desktop image
+- Overlay lifecycle — reveal, idempotent re-show, and full teardown even when
+  interrupted mid-fade — driven from a harness against the real sources
+- Engagement rules, run against scripted lid profiles: working at a normal
+  angle, closing then holding, a slow close with pauses, and reopening
+- The fold itself, rendered offscreen across the whole 0→1 range and inspected
+  frame by frame against a synthetic desktop
 
 Not yet verified on hardware:
 
-- **The fold during an actual lid close.** Every stage is verified through the
-  preview, but the geometry assumes where your eye is — mid-screen height, 5.5
-  panel heights back — and that the panel stands vertical at a lid angle of 90°.
-  `counterRotation` and `eyeDistance` in `MetalFoldView.swift` are the knobs if
-  the illusion drifts.
+- **How closely the illusion holds.** The geometry assumes where your eye is —
+  mid-screen height, 5.5 panel heights back — and that the panel stands vertical
+  at a lid angle of 90°. `counterRotation` and `eyeDistance` in
+  `MetalFoldView.swift` are the constants to adjust if it drifts.
 - **Angle tracking across large travel.** Readings were confirmed live at
   113–119°, including real sensor noise, but not swept through the full range.
 - **60fps sustained performance.** Frames now reach the GPU without a per-frame

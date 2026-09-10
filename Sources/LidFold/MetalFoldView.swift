@@ -27,9 +27,11 @@ final class MetalFoldView: MTKView, MTKViewDelegate {
     /// height. Below 1 the desktop leans with the panel instead of standing
     /// against it, so the illusion is no longer exact, but it still reads as
     /// the screen resisting the fold rather than folding with it.
-    static func counterRotation(forPerspective perspective: Double) -> Float {
-        0.10 + 0.40 * Float(min(max(perspective, 0), 1))
-    }
+    static let counterRotation: Float = 0.30
+
+    /// Frosted defocus, and the falloff into the void behind the panel edge.
+    private static let blurStrength: Float = 0.755
+    private static let darkness: Float = 0.753
 
     /// Viewing distance in panel heights. Far enough back that the projection
     /// is nearly orthographic, which is most of what keeps the keystone mild.
@@ -40,16 +42,6 @@ final class MetalFoldView: MTKView, MTKViewDelegate {
         let end = LidAngleMonitor.foldEndAngle
         let angle = start - Double(progress) * (start - end)
         return Float(max(0, 90 - angle) * .pi / 180)
-    }
-
-    /// Maps a 0...1 setting onto `floor...1`.
-    ///
-    /// The style presets and the sliders each multiply down from 1.0, so at the
-    /// defaults they compounded — perspective landed at 0.70, blur at 0.30,
-    /// shadow at 0.27 — and the fold ran at roughly a third of its strength.
-    /// The controls should modulate the effect, not erase it.
-    private static func scaled(_ value: Double, floor: Float) -> Float {
-        floor + (1 - floor) * Float(min(max(value, 0), 1))
     }
 
     private struct Uniforms {
@@ -176,16 +168,14 @@ final class MetalFoldView: MTKView, MTKViewDelegate {
               let encoder = buffer.makeRenderCommandEncoder(descriptor: descriptor)
         else { return }
 
-        let settings = FoldSettings.shared.effective
         var uniforms = Uniforms(
             texelSize: SIMD2(1 / Float(texture.width), 1 / Float(texture.height)),
             aspect: Float(drawableSize.width / max(drawableSize.height, 1)),
             progress: progress,
-            tilt: Self.panelTilt(forProgress: progress)
-                * Self.counterRotation(forPerspective: settings.perspective),
+            tilt: Self.panelTilt(forProgress: progress) * Self.counterRotation,
             eyeDistance: Self.eyeDistance,
-            blur: Self.scaled(settings.blur, floor: 0.50),
-            darkness: Self.scaled(settings.shadow, floor: 0.60)
+            blur: Self.blurStrength,
+            darkness: Self.darkness
         )
 
         encoder.setRenderPipelineState(pipeline)
