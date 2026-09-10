@@ -45,7 +45,7 @@ final class FoldSettings {
             // Start near full strength. These multiply through the active
             // style's weights, so mid-range defaults compounded down into a
             // fold barely distinguishable from no fold at all.
-            Key.perspective: 1.0,
+            Key.perspective: 0.5,
             Key.blur: 0.85,
             Key.shadow: 0.85,
             Key.enabled: true,

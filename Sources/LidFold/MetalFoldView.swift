@@ -19,6 +19,22 @@ final class MetalFoldView: MTKView, MTKViewDelegate {
     /// image is counter-rotated by exactly this, which is what pins the desktop
     /// in space instead of turning it with the panel. Nothing here is a free
     /// parameter — invent the angle and the illusion stops holding.
+    /// Fraction of the panel's rotation the image counter-rotates by.
+    ///
+    /// At 1 the desktop is pinned exactly upright and the panel sweeps through
+    /// it — geometrically the real thing, and far too strong to look at: by the
+    /// time the lid is shut the image has collapsed to under a tenth of its
+    /// height. Below 1 the desktop leans with the panel instead of standing
+    /// against it, so the illusion is no longer exact, but it still reads as
+    /// the screen resisting the fold rather than folding with it.
+    static func counterRotation(forPerspective perspective: Double) -> Float {
+        0.10 + 0.40 * Float(min(max(perspective, 0), 1))
+    }
+
+    /// Viewing distance in panel heights. Far enough back that the projection
+    /// is nearly orthographic, which is most of what keeps the keystone mild.
+    static let eyeDistance: Float = 5.5
+
     static func panelTilt(forProgress progress: Float) -> Float {
         let start = LidAngleMonitor.foldStartAngle
         let end = LidAngleMonitor.foldEndAngle
@@ -165,10 +181,9 @@ final class MetalFoldView: MTKView, MTKViewDelegate {
             texelSize: SIMD2(1 / Float(texture.width), 1 / Float(texture.height)),
             aspect: Float(drawableSize.width / max(drawableSize.height, 1)),
             progress: progress,
-            tilt: Self.panelTilt(forProgress: progress),
-            // Perspective now sets how close the viewer is rather than how far
-            // the panel turns — the turn is the lid's, not ours to choose.
-            eyeDistance: 3.5 - 1.5 * Self.scaled(settings.perspective, floor: 0.0),
+            tilt: Self.panelTilt(forProgress: progress)
+                * Self.counterRotation(forPerspective: settings.perspective),
+            eyeDistance: Self.eyeDistance,
             blur: Self.scaled(settings.blur, floor: 0.50),
             darkness: Self.scaled(settings.shadow, floor: 0.60)
         )
